@@ -1,0 +1,14 @@
+
+<article class="card" [class.favourite]="favourite()">
+  <p class="date">{{ event().date | date: 'EEE d MMM, HH:mm' }}</p>
+  <h2>{{ event().title }}</h2>
+  <p class="meta">{{ event().location }} · {{ event().capacity }} places</p>
+  @if (event().description) {
+    <p>{{ event().description }}</p>
+  }
+  
+<button type="button" (click)="interested.emit(event())">
+  {{ favourite() ? '★ Remove favourite' : '☆ Add to favourites' }}
+</button>
+
+</article>

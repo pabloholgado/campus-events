@@ -2,6 +2,16 @@ import express from 'express';
 
 const app = express();
 app.use(express.json());
+app.use((req, res, next) => {
+  const start = Date.now();
+
+  res.on('finish', () => {
+    const time = Date.now() - start;
+    console.log(`${req.method} ${req.originalUrl} ${res.statusCode} ${time}ms`);
+  });
+
+  next();
+});
 
 let events = [
   {
@@ -31,18 +41,34 @@ let events = [
 ];
 let nextId = 4;
 
+
 function validateEvent(body) {
   if (typeof body.title !== 'string' || body.title.trim().length < 3) {
     return 'title must have at least 3 characters';
   }
+  if (body.title.length > 120) {
+    return 'title must have at most 120 characters';
+  }
   if (typeof body.date !== 'string' || Number.isNaN(Date.parse(body.date))) {
-    return 'date must be a valid date, e.g. 2026-10-15T18:00';
+    return 'date must be a valid date';
+  }
+  if (new Date(body.date) <= new Date()) {
+    return 'date must be in the future';
   }
   if (!Number.isInteger(body.capacity) || body.capacity < 1) {
     return 'capacity must be a whole number greater than 0';
   }
+  if (body.location != null &&
+      (typeof body.location !== 'string' || body.location.length > 100)) {
+    return 'location must have at most 100 characters';
+  }
+  if (body.description != null &&
+      (typeof body.description !== 'string' || body.description.length > 1000)) {
+    return 'description must have at most 1000 characters';
+  }
   return null;
 }
+
 
 function toEvent(id, body) {
   return {
@@ -55,11 +81,26 @@ function toEvent(id, body) {
   };
 }
 
+
 app.get('/api/events', (req, res) => {
   const q = String(req.query.q ?? '').toLowerCase();
-  const result = events
-    .filter((e) => e.title.toLowerCase().includes(q))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const from = req.query.from;
+  const sort = req.query.sort;
+
+  let result = events.filter((e) =>
+    e.title.toLowerCase().includes(q)
+  );
+
+  if (from) {
+    result = result.filter((e) => e.date >= from);
+  }
+
+  if (sort === 'title') {
+    result.sort((a, b) => a.title.localeCompare(b.title));
+  } else {
+    result.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
   res.json(result);
 });
 
@@ -101,6 +142,24 @@ app.delete('/api/events/:id', (req, res) => {
     return res.status(404).json({ error: 'Event not found' });
   }
   res.status(204).end();
+});
+
+app.get('/api/stats', (req, res) => {
+  const now = new Date();
+
+  const futureEvents = events
+    .filter(e => new Date(e.date) > now)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  const next = futureEvents[0];
+
+  res.json({
+    count: events.length,
+    totalCapacity: events.reduce((sum, e) => sum + e.capacity, 0),
+    nextEvent: next
+      ? { id: next.id, title: next.title, date: next.date }
+      : null
+  });
 });
 
 app.listen(3000, () => {
